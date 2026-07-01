@@ -3,7 +3,7 @@ os.environ["TMPDIR"] = "C:\\temp"
 os.environ["TEMP"] = "C:\\temp"
 os.environ["TMP"] = "C:\\temp"
 
-from dotenv import load_model, load_dotenv
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -36,26 +36,62 @@ class SalesData(BaseModel):
     price: float
     count: int
 
+class DailyStats(BaseModel):
+    day: str
+    orderCount: int
+    revenue: float
+
+class HourlyStats(BaseModel):
+    hour: str
+    orderCount: int
+    revenue: float
+
 class AnalysisRequest(BaseModel):
     salesList: List[SalesData]
+    dailyStats: List[DailyStats] = []
+    hourlyStats: List[HourlyStats] = []
 
+# Gemini AI 텍스트 기반 예측
 @app.post("/api/v1/kiosk/sales-analysis")
 def analyze_kiosk_sales(payload: AnalysisRequest):
     sales_text = "\n".join([
         f"- {item.menuName} ({item.category}): {item.count}개 판매, 매출 {int(item.price * item.count):,}원"
         for item in payload.salesList
     ])
+
+    daily_text = "\n".join([
+        f"- {item.day}요일: 주문 {item.orderCount}건, 매출 {int(item.revenue):,}원"
+        for item in payload.dailyStats
+    ])
+
+    hourly_text = "\n".join([
+        f"- {item.hour}: 주문 {item.orderCount}건, 매출 {int(item.revenue):,}원"
+        for item in payload.hourlyStats
+    ])
     
-    prompt = f"""당신은 카페 매출 데이터 분석 전문가입니다. 다음 매출 데이터를 분석해주세요:
+    prompt = f"""You are an expert cafe business consultant analyzing real sales data.
+    Based on the following data, provide sharp and actionable insights for the cafe owner.
 
-{sales_text}
+    [Menu Sales Data]
+    {sales_text}
 
-다음 항목을 포함해서 분석해주세요:
-1. 현재 매출 트렌드 요약
-2. 인기 메뉴와 부진 메뉴 분석
-3. 향후 매출 개선을 위한 구체적인 제안 2-3가지
+    [Sales by Day of Week]
+    {daily_text}
 
-친근하고 실용적인 톤으로 작성해주세요."""
+    [Sales by Hour]
+    {hourly_text}
+
+
+    Analyze the data and write in Korean with the following structure:
+    1. Sales trend summary (best-selling menus, category trends with specific numbers)
+    2. Day of week and hourly pattern analysis (when is it busiest and slowest, use exact figures)
+    3. Two immediately actionable improvement suggestions (data-driven and specific, not generic)
+
+    Rules:
+    - Write the entire response in Korean
+    - Always reference specific numbers from the data
+    - Avoid vague or generic business advice
+    - Use a friendly but professional tone suitable for a small cafe owner"""
 
     response = model_gemini.generate_content(prompt)
     
@@ -64,7 +100,7 @@ def analyze_kiosk_sales(payload: AnalysisRequest):
         "analysis": response.text
     }
 
-# Prophet AI
+# Prophet AI 그래프 기반 예측
 class MonthlyRevenue(BaseModel):
     month: str  # "2026-01" 형태
     revenue: float
@@ -104,18 +140,23 @@ def forecast_sales(payload: ForecastRequest):
     next_predicted = forecast["yhat"].iloc[len(df)]
     growth_rate = round((next_predicted - last_actual) / last_actual * 100, 1)
 
-    insight_prompt = f"""당신은 카페 매출 데이터 분석가입니다. 다음 Prophet 시계열 예측 결과를 보고 사장님께 전달할 인사이트를 작성하세요.
+    insight_prompt = f"""You are an expert cafe sales analyst. 
+    Analyze the following Prophet time-series forecast results and provide insights for the store owner.
 
-    최근 6개월 실측 매출 추이: {[round(v) for v in df['y'].tolist()]}
-    다음 3개월 예측 매출: {[round(forecast['yhat'].iloc[len(df)+i]) for i in range(3)]}
-    예상 성장률: {growth_rate}%
+    Recent 6 months actual revenue: {[round(v) for v in df['y'].tolist()]}
+    Next 3 months predicted revenue: {[round(forecast['yhat'].iloc[len(df)+i]) for i in range(3)]}
+    Expected growth rate: {growth_rate}%
 
-    다음 형식으로 2~3문장 작성하세요:
-    1. 최근 추세에 대한 구체적 평가 (단순 "성장 중" 같은 뻔한 말 금지, 구체적 수치나 패턴 언급)
-    2. 다음 달 예측에 대한 실질적 코멘트
-    3. 이 추세를 활용하기 위한 실행 가능한 제안 1가지
+    Write 2-3 sentences in Korean following this format:
+    1. A specific evaluation of the recent trend (avoid vague phrases like "growing steadily", mention specific numbers or patterns)
+    2. A practical comment on next month's forecast
+    3. One actionable suggestion the owner can implement immediately
 
-    친근하지만 전문적인 톤으로, 사장님이 바로 행동할 수 있게 구체적으로 작성하세요."""
+    URules:
+    - Write the entire response in Korean
+    - Always reference specific numbers from the data
+    - Avoid vague or generic business advice
+    - Use a friendly but professional tone suitable for a small cafe owner"""
 
     insight_response = model_gemini.generate_content(insight_prompt)
 
