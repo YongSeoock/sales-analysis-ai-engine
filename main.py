@@ -1,7 +1,3 @@
-import os
-os.environ["TMPDIR"] = "C:\\temp"
-os.environ["TEMP"] = "C:\\temp"
-os.environ["TMP"] = "C:\\temp"
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -152,7 +148,7 @@ def forecast_sales(payload: ForecastRequest):
     2. A practical comment on next month's forecast
     3. One actionable suggestion the owner can implement immediately
 
-    URules:
+    Rules:
     - Write the entire response in Korean
     - Always reference specific numbers from the data
     - Avoid vague or generic business advice
@@ -165,3 +161,8 @@ def forecast_sales(payload: ForecastRequest):
         "growthRate": growth_rate,
         "insight": insight_response.text.strip()
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
